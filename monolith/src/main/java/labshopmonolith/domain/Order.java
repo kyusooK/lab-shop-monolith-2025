@@ -1,20 +1,16 @@
 package labshopmonolith.domain;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.LocalDate;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import javax.persistence.*;
+import javax.transaction.Transactional;
+
 import labshopmonolith.MonolithApplication;
-import labshopmonolith.domain.OrderPlaced;
 import lombok.Data;
 
 @Entity
 @Table(name = "Order_table")
 @Data
-//<<< DDD / Aggregate Root
 public class Order {
 
     @Id
@@ -29,19 +25,28 @@ public class Order {
 
     private Double amount;
 
-    @PostPersist
+    //private String address;
+
+    @PostPersist // Pre|Post + Persist|Remove|Load|Update --> PreUpdate PostUpdate PostRemove
     public void onPostPersist() {
-        //Following code causes dependency to external APIs
-        // it is NOT A GOOD PRACTICE. instead, Event-Policy mapping is recommended.
+        System.out.println("Saved");
+    }
 
-        labshopmonolith.external.DecreaseStockCommand decreaseStockCommand = new labshopmonolith.external.DecreaseStockCommand();
-        // mappings goes here
-        MonolithApplication.applicationContext
-            .getBean(labshopmonolith.external.InventoryService.class)
-            .decreaseStock(/* get???(), */decreaseStockCommand);
+    @PrePersist
+    public void checkAvailability(){
+        if(inventoryService().getInventory(Long.valueOf(getProductId())).getStock() < getQty()) 
+            throw new RuntimeException("Out of stock");
 
-        OrderPlaced orderPlaced = new OrderPlaced(this);
-        orderPlaced.publishAfterCommit();
+        inventoryService().decreaseStock(Long.valueOf(getProductId()), new DecreaseStockCommand(getQty()));
+
+    }
+
+    public static InventoryService inventoryService(){
+        InventoryService inventoryService = MonolithApplication.applicationContext.getBean(
+            InventoryService.class
+        );
+
+        return inventoryService;
     }
 
     public static OrderRepository repository() {
@@ -51,4 +56,3 @@ public class Order {
         return orderRepository;
     }
 }
-//>>> DDD / Aggregate Root
